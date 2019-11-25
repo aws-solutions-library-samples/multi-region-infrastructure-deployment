@@ -1,0 +1,22 @@
+{
+  "name": "custom-resource",
+  "version": "1.0.0",
+  "description": "CloudFormation custom resource for creating secondary region s3 bucket to store CodePipeline artifacts",
+  "main": "index.js",
+  "devDependencies": {
+    "aws-sdk": "*",
+    "aws-sdk-mock": "^4.5.0",
+    "axios-mock-adapter": "^1.17.0",
+    "chai": "*",
+    "mocha": "*"
+  },
+  "scripts": {
+    "test": "mocha **/*.spec.js"
+  },
+  "license": "Apache-2.0",
+  "author": "aws-solutions-builders",
+  "dependencies": {
+    "axios": "^0.19.0",
+    "uuid": "^3.3.3"
+  }
+}

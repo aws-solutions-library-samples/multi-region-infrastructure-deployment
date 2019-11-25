@@ -1,0 +1,686 @@
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the License.
+# A copy of the License is located at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# or in the "license" file accompanying this file. This file is distributed
+# on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+# express or implied. See the License for the specific language governing
+# permissions and limitations under the License.
+
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: (SO0086) - The Multi Region Application Architecture Infrastructure Deployment Solution validates and deploys CloudFormation templates to pre-prod and prod environments across AWS Regions (Version SOLUTION_VERSION)
+
+Parameters:
+  GitHubUser:
+    Type: String
+  GitHubRepo:
+    Type: String
+  GitHubBranch:
+    Type: String
+  GitHubToken:
+    Type: String
+    NoEcho: true
+
+  PreProdParameters:
+    Type: String
+    Description: A JSON object that sets the PreProd Stack CloudFormation Template Parameters. Leave this field blank if the CloudFormation template specified in the TemplatePath parameter has no parameters. 
+
+  SecondaryParameters:
+    Type: String
+    Description: A JSON object that sets the Secondary Stack CloudFormation Template Parameters
+  
+  PrimaryParameters:
+    Type: String
+    Description: A JSON object that sets the Primary Stack CloudFormation Template Parameters
+
+  ArtifactStoreBucketPrefix:
+    Type: String
+    AllowedPattern: ^[0-9a-z]+([0-9a-z-]*[0-9a-z])*$
+    ConstraintDescription: S3 Bucket Names can include numbers, lowercase letters, and hyphens (-). It cannot start or end with a hyphen (-).,
+
+  SecondaryRegion:
+    Type: String
+    Description: The Secondary Region the CloudFormation template should be deployed to, specified in the standard format, e.g., us-east-1, us-west-2, etc...
+
+  TemplatePath:
+    Type: String
+    Description: The path to the CloudFormation template to deploy, specified from the root of the Git repository, e.g., templates/my_template.yaml
+
+  CloudFormationExecutionPolicy:
+    Type: String
+    Description: The ARN of the IAM Policy used to allow CloudFormation to create/execute change sets. This policy is specific to the resources being provisioned in CloudFormation Template specified in the TemplatePath parameter. Because a template can contain any number of arbitrary resources, there is no way to know ahead of time what the allowed policies should be.
+
+Mappings:
+  SourceCode:
+    General:
+      S3Bucket: CODE_BUCKET
+      KeyPrefix: SOLUTION_NAME/SOLUTION_VERSION
+  Solution:
+    Metrics:
+      SendAnonymousData: Yes
+
+Resources:
+  PrimaryRegionArtifactStore:
+    Type: AWS::S3::Bucket
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W51
+            reason: Policy not required for this bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub ${ArtifactStoreBucketPrefix}-${AWS::Region}
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LogsBucket
+        LogFilePrefix: primary-region-artifact-store-access/
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: aws:kms
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+  
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: This is the destination logging bucket for S3 buckets in this solution
+          - id: W51
+            reason: Policy not required for this bucket
+    Properties:
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: aws:kms
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+    
+  CloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Action: 
+            - 'sts:AssumeRole'
+          Principal:
+            Service:
+              - cloudformation.amazonaws.com
+      Path: /
+      ManagedPolicyArns:
+        - !Ref CloudFormationExecutionPolicy
+
+  InfraPipelineRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: >- 
+              s3:GetObject/PutObject/GetObjectVersion/GetBucketVersioning - requires trailing * due to unknown object names
+              codebuild:StartBuild/BatchGetBuilds - requires trailing * due to unknown build project names
+              cloudFormation - requires trailing * due to unknown changeset names
+              cloudformation:ValidateTemplate - requires * resource
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: 
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                Resource: 
+                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${AWS::Region}/*
+                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${SecondaryRegion}/*
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: 
+                  - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/*
+              - Effect: Allow 
+                Action:    
+                  - cloudformation:CreateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DeleteStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:SetStackPolicy
+                Resource: 
+                  - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:*
+                  - !Sub arn:aws:cloudformation:${SecondaryRegion}:${AWS::AccountId}:*
+              - Effect: Allow 
+                Action:    
+                  - iam:PassRole    
+                Resource: 
+                  - !GetAtt CloudFormationExecutionRole.Arn
+              - Effect: Allow 
+                Action:    
+                  - cloudformation:ValidateTemplate  
+                Resource: 
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: 
+                  - !GetAtt ChangeSetValidatorLambda.Arn
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: >- 
+              logs:CreateLogGroup/CreateLogStream/PutLogEvents - requires trailing * on resource to avoid creating a circular dependency
+              s3:GetObject/PutObject/GetObjectVersion - requires trailing * due to unknown object names
+              cloudformation:ValidateTemplate - requires * resource
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow 
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents 
+                Resource:
+                  - !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/codebuild/*"]]
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+                Resource: 
+                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${AWS::Region}/*
+                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${SecondaryRegion}/*
+              - Effect: Allow 
+                Action:                  
+                  - cloudformation:ValidateTemplate
+                Resource: '*'
+
+  InfraPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: ArtifactStoreCreatorCustomResource
+    Properties:
+      ArtifactStores:
+        - Region: !Ref AWS::Region
+          ArtifactStore:
+            Type: "S3"
+            Location: !Sub ${ArtifactStoreBucketPrefix}-${AWS::Region}
+        - Region: !Ref SecondaryRegion
+          ArtifactStore:
+            Type: "S3"
+            Location: !Sub ${ArtifactStoreBucketPrefix}-${SecondaryRegion}
+      RoleArn: !GetAtt InfraPipelineRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHub
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: "1"
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GitHubUser
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              OutputArtifacts:
+                - Name: Source
+
+        - Name: CheckChanges
+          Actions:
+            - Name: CreateChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                StackName: !Sub ${AWS::StackName}-Stack-PreProd-${AWS::Region}
+                ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-CheckChanges-${AWS::Region}
+                TemplatePath: !Sub Source::${TemplatePath}
+                Capabilities: CAPABILITY_IAM
+                ParameterOverrides: !Ref PreProdParameters
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: !Sub ${AWS::StackName}-ChangeSet-CheckChanges-${AWS::Region}
+              RunOrder: 1
+              Region: !Ref AWS::Region
+
+            - Name: CheckChangeSetForChanges
+              ActionTypeId:
+                Category: Invoke
+                Owner: AWS
+                Provider: Lambda
+                Version: "1"
+              Configuration:
+                FunctionName: !Ref ChangeSetValidatorLambda
+              InputArtifacts: 
+                - Name: !Sub ${AWS::StackName}-ChangeSet-CheckChanges-${AWS::Region}
+              OutputArtifacts:
+                - Name: !Sub ${AWS::StackName}-ChangeSet-CheckedChangedSet-${AWS::Region}
+              RunOrder: 2
+              Region: !Ref AWS::Region
+
+        - Name: ValidateTemplates
+          Actions:
+            - Name: CfnNag
+              InputArtifacts:
+                - Name: Source
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CfnNagBuildProject
+              OutputArtifacts:
+                - Name: CfnNagOutput
+
+            - Name: CfnLint
+              InputArtifacts:
+                - Name: Source
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CfnLintBuildProject
+              OutputArtifacts:
+                - Name: CfnLintOutput
+
+        - Name: !Sub PreProd-${AWS::Region}
+          Actions:
+            - Name: CreateChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                StackName: !Sub ${AWS::StackName}-Stack-PreProd-${AWS::Region}
+                ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-PreProd-${AWS::Region}
+                TemplatePath: !Sub Source::${TemplatePath}
+                Capabilities: CAPABILITY_IAM
+                ParameterOverrides: !Ref PreProdParameters
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: !Sub ${AWS::StackName}-ChangeSet-PreProd-${AWS::Region}
+              RunOrder: 1
+              Region: !Ref AWS::Region
+
+            - Name: ExecuteChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                StackName: !Sub ${AWS::StackName}-Stack-PreProd-${AWS::Region}
+                ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-PreProd-${AWS::Region}
+              OutputArtifacts:
+                - Name: !Sub ${AWS::StackName}-ExecutedChangeSet-PreProd-${AWS::Region}
+              RunOrder: 2
+              Region: !Ref AWS::Region
+
+        - Name: !Sub Secondary-${SecondaryRegion}
+          Actions:
+            - Name: CreateChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                StackName: !Sub ${AWS::StackName}-Stack-Secondary-${SecondaryRegion}
+                ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-Secondary-${SecondaryRegion}
+                TemplatePath: !Sub Source::${TemplatePath}
+                Capabilities: CAPABILITY_IAM
+                ParameterOverrides: !Ref SecondaryParameters
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: !Sub ${AWS::StackName}-ChangeSet-Secondary-${SecondaryRegion}
+              RunOrder: 1
+              Region: !Ref SecondaryRegion
+
+            - Name: ExecuteChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                StackName: !Sub ${AWS::StackName}-Stack-Secondary-${SecondaryRegion}
+                ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-Secondary-${SecondaryRegion}
+              OutputArtifacts:
+                - Name: !Sub ${AWS::StackName}-ExecutedChangeSet-Secondary-${SecondaryRegion}
+              RunOrder: 2
+              Region: !Ref SecondaryRegion
+
+        - Name: !Sub PrimaryProd-${AWS::Region}
+          Actions:
+            - Name: CreateChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                StackName: !Sub ${AWS::StackName}-Stack-PrimaryProd-${AWS::Region}
+                ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-PrimaryProd-${AWS::Region}
+                TemplatePath: !Sub Source::${TemplatePath}
+                Capabilities: CAPABILITY_IAM
+                ParameterOverrides: !Ref PrimaryParameters
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: !Sub ${AWS::StackName}-ChangeSet-PrimaryProd-${AWS::Region}
+              RunOrder: 1
+              Region: !Ref AWS::Region
+
+            - Name: ApproveChangeSet
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: '1'
+              RunOrder: 2
+              Region: !Ref AWS::Region
+
+            - Name: ExecuteChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                StackName: !Sub ${AWS::StackName}-Stack-PrimaryProd-${AWS::Region}
+                ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-PrimaryProd-${AWS::Region}
+              OutputArtifacts:
+                - Name: !Sub ${AWS::StackName}-ExecutedChangeSet-PrimaryProd-${AWS::Region}
+              RunOrder: 3
+              Region: !Ref AWS::Region
+
+  InfraPipelineWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: !Ref GitHubToken
+      Filters:
+        - JsonPath: "$.ref"
+          MatchEquals: refs/heads/{Branch}
+      TargetPipeline: !Ref InfraPipeline
+      TargetAction: GitHub
+      Name: !Sub ${AWS::StackName}-AppPipelineWebhook
+      TargetPipelineVersion: !GetAtt InfraPipeline.Version
+      RegisterWithThirdParty: true
+
+  CfnNagBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                ruby: 2.6                    
+              commands:
+                - echo Installing cfn_nag - `pwd`
+                - gem install -V cfn-nag
+                - cfn_nag -v
+                - echo cfn_nag installation complete `date`
+            build:
+              commands:
+                - echo Starting cfn_nag scanning `date` in `pwd`
+                - cfn_nag --fail-on-warnings $TEMPLATE_PATH
+                - echo Completed cfn_nag scanning `date`
+          artifacts:
+            files: '*'
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: TEMPLATE_Path
+            Value: !Ref TemplatePath
+      ServiceRole: !Ref CodeBuildServiceRole
+      EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
+
+  CfnLintBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: 3.7                    
+              commands:
+                - echo Installing cfn-lint - `pwd`
+                - pip install cfn-lint
+                - cfn-lint -v
+                - echo cfn-lint installation complete `date`
+            build:
+              commands:
+                - echo Starting cfn-lint validation of template $TEMPLATE_PATH for regions $PRIMARY_REGION and $SECONDARY_REGION at `date` in `pwd`
+                - cfn-lint --template $TEMPLATE_PATH --regions $PRIMARY_REGION $SECONDARY_REGION
+                - echo Completed cfn-lint validation `date`
+          artifacts:
+            files: '*'
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: PRIMARY_REGION
+            Value: !Ref AWS::Region
+          - Name: SECONDARY_REGION
+            Value: !Ref SecondaryRegion
+          - Name: TEMPLATE_PATH
+            Value: !Ref TemplatePath
+      ServiceRole: !Ref CodeBuildServiceRole
+      EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
+
+  ArtifactStoreCreatorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda Custom Resource used to create a CodePipeline Artifact Store S3 bucket in a secondary region
+      Handler: index.handler
+      Role: !GetAtt ArtifactStoreCreatorLambdaRole.Arn
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "custom-resource.zip"]]
+      Runtime:  nodejs10.x
+      Timeout: 120
+      Environment:
+        Variables:
+          BUCKET_PREFIX: !Ref ArtifactStoreBucketPrefix
+          REGION: !Ref SecondaryRegion
+
+  ArtifactStoreCreatorCustomResource:
+    Type: Custom::ArtifactStoreCreatorCustomResource
+    Properties:
+      ServiceToken: !GetAtt ArtifactStoreCreatorLambda.Arn
+      Resource: ArtifactStoreCreatorCustomResource
+
+  UUID:
+    Type: Custom::UUID
+    Properties:
+      ServiceToken: !GetAtt ArtifactStoreCreatorLambda.Arn
+      Resource: UUID
+
+  ArtifactStoreCreatorLambdaRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: >- 
+              logs:CreateLogGroup/CreateLogStream/PutLogEvents - requires trailing * on resource to avoid creating a circular dependency
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ArtifactStoreCreatorLambdaRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - s3:CreateBucket 
+                  - s3:PutEncryptionConfiguration 
+                  - s3:PutBucketAcl 
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:PutBucketLogging
+                Resource: 
+                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${SecondaryRegion}
+                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${SecondaryRegion}-logs
+
+  ChangeSetValidatorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Validates that a CloudFormation ChangeSet contains changes before pushing it through the rest of the CodePipeline
+      Handler: index.handler
+      Role: !GetAtt ChangeSetValidatorLambdaRole.Arn
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "changeset-validator.zip"]] 
+      Runtime: nodejs10.x
+      Timeout: 180
+      Environment:
+        Variables:
+          STACK_NAME: !Sub ${AWS::StackName}-Stack-PreProd-${AWS::Region}
+          REGION: !Ref AWS::Region
+          SOLUTION_ID: SO0086
+          UUID: !GetAtt UUID.UUID
+          VERSION: SOLUTION_VERSION
+          SEND_METRICS: !FindInMap ["Solution" ,"Metrics" ,"SendAnonymousData"]
+
+  ChangeSetValidatorLambdaRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: >- 
+              logs:CreateLogGroup/CreateLogStream/PutLogEvents - requires trailing * on resource to avoid creating a circular dependency
+              codepipeline:PutJobFailureResult/PutJobSuccessResult - requires * resource
+              cloudformation:DescribeChangeSet - requires trailing * on resource to avoid creating a circular dependency
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-ChangeSetValidatorLambdaRole-CustomPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeChangeSet
+                Resource: 
+                  - arn:aws:cloudformation:*:*:stack/*/*
+              - Effect: Allow
+                Action:
+                  - codepipeline:PutJobFailureResult
+                  - codepipeline:PutJobSuccessResult
+                Resource: 
+                  - "*"
+
+

@@ -1,0 +1,22 @@
+{
+  "name": "cfn-template-checker",
+  "version": "1.0.0",
+  "description": "Lambda Package to check if CloudFormation templates have changed since the last time it was checked.",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha **/*.spec.js"
+  },
+  "author": "aws-solutions-builders",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "aws-sdk": "*",
+    "aws-sdk-mock": "^4.5.0",
+    "chai": "*",
+    "mocha": "*",
+    "sinon": "*"
+  },
+  "dependencies": {
+    "axios": "^0.19.0",
+    "moment": "^2.24.0"
+  }
+}
