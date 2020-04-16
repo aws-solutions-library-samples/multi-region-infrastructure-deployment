@@ -35,26 +35,31 @@ mkdir -p $template_dist_dir
 rm -rf $build_dist_dir
 mkdir -p $build_dist_dir
 
-# move the CFN template to the global dist dir
-cp $template_dir/multi-region-infrastructure-pipeline.template $template_dist_dir/
+SUB1="s/CODE_BUCKET/$1/g"
+SUB2="s/SOLUTION_NAME/$2/g"
+SUB3="s/SOLUTION_VERSION/$3/g"
 
-# replace placeholder values in the CFN template
-cd ..
-replace="s/CODE_BUCKET/$1/g"
-sed -i '' -e $replace $template_dist_dir/multi-region-infrastructure-pipeline.template
-replace="s/SOLUTION_NAME/$2/g"
-sed -i '' -e $replace $template_dist_dir/multi-region-infrastructure-pipeline.template
-replace="s/SOLUTION_VERSION/$3/g"
-sed -i '' -e $replace $template_dist_dir/multi-region-infrastructure-pipeline.template
+for FULLNAME in ./*.template
+do
+  TEMPLATE=`basename $FULLNAME`
+  echo "Preparing $TEMPLATE"
+  sed -e $SUB1 -e $SUB2 -e $SUB3 $template_dir/$TEMPLATE > $template_dist_dir/$TEMPLATE
+done
 
-# build the custom-resource Lambda package and move it to the regional dist dir
-cd $source_dir/custom-resource
-rm -rf node_modules/
-npm install --production
-rm package-lock.json
-zip -q -r9 $build_dist_dir/custom-resource.zip *
+cd $source_dir/secondary-bucket-creator
+npm install
+rm -rf package && mkdir package
+rsync -r --exclude=*.spec.ts source/ ./package/ && cp package.json tsconfig.json ./package
+cd package && npm install --production && tsc --project tsconfig.json --outDir .
+zip -q -r9 $build_dist_dir/secondary-bucket-creator *
 
-# build the changeset-validator Lambda package and move it to the regional dist dir
+cd $source_dir/uuid-generator
+npm install
+rm -rf package && mkdir package
+rsync -r --exclude=*.spec.ts source/ ./package/ && cp package.json tsconfig.json ./package
+cd package && npm install --production && tsc --project tsconfig.json --outDir .
+zip -q -r9 $build_dist_dir/uuid-generator *
+
 cd $source_dir/changeset-validator
 rm -rf node_modules/
 npm install --production

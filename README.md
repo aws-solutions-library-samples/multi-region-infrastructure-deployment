@@ -1,6 +1,6 @@
-# Multi Region Application Architecture: Infrastructure Deployment
+# Multi Region Infrastructure Deployment
 
-The Multi Region Application Architecture: Infrastructure Deployment Solution validates and deploys CloudFormation Templates to pre-production, secondary, and primary environments across two regions. Using this solution helps to ensure any infrastructure changes made to a primary environment are automatically deployed to a secondary environment also. Ensuring consistency across environments reduces the risk involved in shifting production traffic across regions.
+The Multi Region Infrastructure Deployment Solution validates and deploys CloudFormation Templates to pre-production, secondary, and primary environments across two regions. Using this solution helps to ensure any infrastructure changes made to a primary environment are automatically deployed to a secondary environment also. Ensuring consistency across environments reduces the risk involved in shifting production traffic across regions.
 
 ## On This Page
 - [Architecture Overview](#architecture-overview)
@@ -10,7 +10,7 @@ The Multi Region Application Architecture: Infrastructure Deployment Solution va
 ## Architecture Overview
 ![Architecture](architecture.png)
 
-At a high level, the Multi Region Infrastructure Deployment pipeline does the following steps:
+At a high level, the Multi Region Infrastructure Deployment solution does the following steps:
 
 1. Automatically detects changes to a source GitHub repository
 2. Validates the CloudFormation template using cfn-lint and cfn_nag, and halts a deployment if either check fails
@@ -44,7 +44,7 @@ aws s3 mb s3://my-bucket-us-east-1
 Build the distributable:
 ```
 chmod +x ./build-s3-dist.sh
-./build-s3-dist.sh my-bucket multi-region-infrastructure-deployment my-version
+./build-s3-dist.sh my-bucket infrastructure-deployment my-version
 ```
 
 > **Notes**: The _build-s3-dist_ script expects the bucket name as one of its parameters, and this value should not include the region suffix
@@ -56,10 +56,9 @@ aws s3 sync ./global-s3-assets/ s3://my-bucket-us-east-1/multi-region-infrastruc
 ```
 
 ### 4. Launch the CloudFormation template.
-* Get the link of the multi-region-infrastructure-pipeline.template uploaded to your Amazon S3 bucket.
-* Deploy the Multi Region Application Architecture Solution to your account by launching a new AWS CloudFormation stack using the S3 link of the multi-region-infrastructure-pipeline.template.
+* Get the link of the multi-region-infrastructure-deployment.template uploaded to your Amazon S3 bucket.
+* Deploy the Multi Region Infrastructure Deployment Solution to your account by launching a new AWS CloudFormation stack using the S3 link of the multi-region-infrastructure-deployment.template.
 
 ## License
 
 * This project is licensed under the terms of the Apache 2.0 license. See `LICENSE`.
-* Included AWS Lambda functions are licensed under the MIT-0 license. See `LICENSE.MIT-0`.

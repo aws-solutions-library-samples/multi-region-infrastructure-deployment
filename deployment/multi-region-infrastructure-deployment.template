@@ -1,4 +1,4 @@
-# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
 # You may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 
 AWSTemplateFormatVersion: 2010-09-09
 
-Description: (SO0086) - The Multi Region Application Architecture Infrastructure Deployment Solution validates and deploys CloudFormation templates to pre-prod and prod environments across AWS Regions (Version SOLUTION_VERSION)
+Description: (SO0086) - The Multi Region Infrastructure Deployment Solution validates and deploys CloudFormation templates to pre-prod and prod environments across AWS Regions (Version SOLUTION_VERSION)
 
 Parameters:
   GitHubUser:
@@ -22,38 +22,87 @@ Parameters:
     Type: String
   GitHubBranch:
     Type: String
+    Description: e.g., master
   GitHubToken:
     Type: String
+    Description: This token will have been generated from within your GitHub account
     NoEcho: true
-
-  PreProdParameters:
-    Type: String
-    Description: A JSON object that sets the PreProd Stack CloudFormation Template Parameters. Leave this field blank if the CloudFormation template specified in the TemplatePath parameter has no parameters. 
-
-  SecondaryParameters:
-    Type: String
-    Description: A JSON object that sets the Secondary Stack CloudFormation Template Parameters
-  
-  PrimaryParameters:
-    Type: String
-    Description: A JSON object that sets the Primary Stack CloudFormation Template Parameters
-
-  ArtifactStoreBucketPrefix:
-    Type: String
-    AllowedPattern: ^[0-9a-z]+([0-9a-z-]*[0-9a-z])*$
-    ConstraintDescription: S3 Bucket Names can include numbers, lowercase letters, and hyphens (-). It cannot start or end with a hyphen (-).,
 
   SecondaryRegion:
     Type: String
-    Description: The Secondary Region the CloudFormation template should be deployed to, specified in the standard format, e.g., us-east-1, us-west-2, etc...
+    Description: Specified in the standard format, e.g., us-east-1, us-west-2, etc...
 
   TemplatePath:
     Type: String
-    Description: The path to the CloudFormation template to deploy, specified from the root of the Git repository, e.g., templates/my_template.yaml
+    Description: Specified from the root of the Git repository, e.g., templates/my_template.yaml
 
   CloudFormationExecutionPolicy:
     Type: String
-    Description: The ARN of the IAM Policy used to allow CloudFormation to create/execute change sets. This policy is specific to the resources being provisioned in CloudFormation Template specified in the TemplatePath parameter. Because a template can contain any number of arbitrary resources, there is no way to know ahead of time what the allowed policies should be.
+    Description: The ARN of the IAM Policy used to allow CloudFormation to create/execute change sets. Create an IAM Policy specific to administering the resources that will be provisioned by the CloudFormation Template in the GitHub repository.
+
+  PreProdParameters:
+    Type: String
+    Description: CloudFormation Template Parameters Application's Stack. Leave this field blank if the CloudFormation template specified in the TemplatePath parameter has no parameters.
+    Default: ''
+
+  SecondaryParameters:
+    Type: String
+    Description: CloudFormation Template Parameters Application's Stack. Leave this field blank if the CloudFormation template specified in the TemplatePath parameter has no parameters.
+    Default: ''
+
+  PrimaryParameters:
+    Type: String
+    Description: CloudFormation Template Parameters Application's Stack. Leave this field blank if the CloudFormation template specified in the TemplatePath parameter has no parameters.
+    Default: ''
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: GitHub Repository Configuration
+        Parameters:
+          - GitHubUser
+          - GitHubToken
+          - GitHubRepo
+          - GitHubBranch
+          - TemplatePath
+      - Label:
+          default: Application Stack Parameters
+        Parameters:
+          - PreProdParameters
+          - PrimaryParameters
+          - SecondaryParameters
+      - Label:
+          default: Deployment Configuration
+        Parameters:
+          - CloudFormationExecutionPolicy
+          - SecondaryRegion
+    ParameterLabels:
+      GitHubRepo:
+        default: Name of the GitHub repository that should trigger the pipeline
+      GitHubBranch:
+        default: Name of the branch in the above repository that should trigger the pipeline
+      TemplatePath:
+        default: Path to the CloudFormation template in the above repository
+      GitHubToken:
+        default: GitHub Personal Access Token
+      GitHubUser:
+        default: GitHub Username
+      PreProdParameters:
+        default: PreProd Stack (Primary Region) Parameters
+      PrimaryParameters:
+        default: Primary Region Parameters
+      SecondaryParameters:
+        default: Secondary Region Parameters
+      SecondaryRegion:
+        default: The Secondary Region the application's CloudFormation template should be deployed to
+      CloudFormationExecutionPolicy:
+        default: CloudFormation Execution Policy ARN
+
+Conditions:
+  HasPreProdParameters: !Not [ !Equals [ !Ref PreProdParameters, '' ] ]
+  HasSecondaryParameters: !Not [ !Equals [ !Ref SecondaryParameters, '' ] ]
+  HasPrimaryParameters: !Not [ !Equals [ !Ref PrimaryParameters, '' ] ]
 
 Mappings:
   SourceCode:
@@ -65,7 +114,7 @@ Mappings:
       SendAnonymousData: Yes
 
 Resources:
-  PrimaryRegionArtifactStore:
+  PrimaryArtifactStore:
     Type: AWS::S3::Bucket
     Metadata:
       cfn_nag:
@@ -74,10 +123,9 @@ Resources:
             reason: Policy not required for this bucket
     DeletionPolicy: Retain
     Properties:
-      BucketName: !Sub ${ArtifactStoreBucketPrefix}-${AWS::Region}
       LoggingConfiguration:
-        DestinationBucketName: !Ref LogsBucket
-        LogFilePrefix: primary-region-artifact-store-access/
+        DestinationBucketName: !Ref PrimaryLogsBucket
+        LogFilePrefix: primary-artifact-store-access/
       BucketEncryption:
         ServerSideEncryptionConfiguration:
         - ServerSideEncryptionByDefault:
@@ -88,7 +136,7 @@ Resources:
         IgnorePublicAcls: True
         RestrictPublicBuckets: True
   
-  LogsBucket:
+  PrimaryLogsBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Metadata:
@@ -157,8 +205,8 @@ Resources:
                   - s3:GetObjectVersion
                   - s3:GetBucketVersioning
                 Resource: 
-                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${AWS::Region}/*
-                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${SecondaryRegion}/*
+                  - !Sub arn:aws:s3:::${PrimaryArtifactStore}/*
+                  - !Sub arn:aws:s3:::${SecondaryBucketCreator.BucketName}/*
               - Effect: Allow
                 Action:
                   - codebuild:StartBuild
@@ -233,8 +281,8 @@ Resources:
                   - s3:PutObject
                   - s3:GetObjectVersion
                 Resource: 
-                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${AWS::Region}/*
-                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${SecondaryRegion}/*
+                  - !Sub arn:aws:s3:::${PrimaryArtifactStore}/*
+                  - !Sub arn:aws:s3:::${SecondaryBucketCreator.BucketName}/*
               - Effect: Allow 
                 Action:                  
                   - cloudformation:ValidateTemplate
@@ -242,17 +290,16 @@ Resources:
 
   InfraPipeline:
     Type: AWS::CodePipeline::Pipeline
-    DependsOn: ArtifactStoreCreatorCustomResource
     Properties:
       ArtifactStores:
         - Region: !Ref AWS::Region
           ArtifactStore:
-            Type: "S3"
-            Location: !Sub ${ArtifactStoreBucketPrefix}-${AWS::Region}
+            Type: S3
+            Location: !Ref PrimaryArtifactStore
         - Region: !Ref SecondaryRegion
           ArtifactStore:
-            Type: "S3"
-            Location: !Sub ${ArtifactStoreBucketPrefix}-${SecondaryRegion}
+            Type: S3
+            Location: !GetAtt SecondaryBucketCreator.BucketName
       RoleArn: !GetAtt InfraPipelineRole.Arn
       Stages:
         - Name: Source
@@ -261,13 +308,14 @@ Resources:
               ActionTypeId:
                 Category: Source
                 Owner: ThirdParty
-                Version: "1"
+                Version: '1'
                 Provider: GitHub
               Configuration:
                 Owner: !Ref GitHubUser
                 Repo: !Ref GitHubRepo
                 Branch: !Ref GitHubBranch
                 OAuthToken: !Ref GitHubToken
+                PollForSourceChanges: false
               OutputArtifacts:
                 - Name: Source
 
@@ -286,7 +334,7 @@ Resources:
                 ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-CheckChanges-${AWS::Region}
                 TemplatePath: !Sub Source::${TemplatePath}
                 Capabilities: CAPABILITY_IAM
-                ParameterOverrides: !Ref PreProdParameters
+                ParameterOverrides: !If [ HasPreProdParameters, !Ref PreProdParameters, !Ref 'AWS::NoValue' ]
               InputArtifacts:
                 - Name: Source
               OutputArtifacts:
@@ -299,7 +347,7 @@ Resources:
                 Category: Invoke
                 Owner: AWS
                 Provider: Lambda
-                Version: "1"
+                Version: '1'
               Configuration:
                 FunctionName: !Ref ChangeSetValidatorLambda
               InputArtifacts: 
@@ -323,6 +371,7 @@ Resources:
                 ProjectName: !Ref CfnNagBuildProject
               OutputArtifacts:
                 - Name: CfnNagOutput
+              RunOrder: 1
 
             - Name: CfnLint
               InputArtifacts:
@@ -336,6 +385,7 @@ Resources:
                 ProjectName: !Ref CfnLintBuildProject
               OutputArtifacts:
                 - Name: CfnLintOutput
+              RunOrder: 2
 
         - Name: !Sub PreProd-${AWS::Region}
           Actions:
@@ -352,7 +402,7 @@ Resources:
                 ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-PreProd-${AWS::Region}
                 TemplatePath: !Sub Source::${TemplatePath}
                 Capabilities: CAPABILITY_IAM
-                ParameterOverrides: !Ref PreProdParameters
+                ParameterOverrides: !If [ HasPreProdParameters, !Ref PreProdParameters, !Ref 'AWS::NoValue' ]
               InputArtifacts:
                 - Name: Source
               OutputArtifacts:
@@ -391,7 +441,7 @@ Resources:
                 ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-Secondary-${SecondaryRegion}
                 TemplatePath: !Sub Source::${TemplatePath}
                 Capabilities: CAPABILITY_IAM
-                ParameterOverrides: !Ref SecondaryParameters
+                ParameterOverrides: !If [ HasSecondaryParameters, !Ref SecondaryParameters, !Ref 'AWS::NoValue' ]
               InputArtifacts:
                 - Name: Source
               OutputArtifacts:
@@ -430,7 +480,7 @@ Resources:
                 ChangeSetName: !Sub ${AWS::StackName}-ChangeSet-PrimaryProd-${AWS::Region}
                 TemplatePath: !Sub Source::${TemplatePath}
                 Capabilities: CAPABILITY_IAM
-                ParameterOverrides: !Ref PrimaryParameters
+                ParameterOverrides: !If [ HasPrimaryParameters, !Ref PrimaryParameters, !Ref 'AWS::NoValue' ]
               InputArtifacts:
                 - Name: Source
               OutputArtifacts:
@@ -508,7 +558,7 @@ Resources:
         Image: aws/codebuild/standard:2.0
         Type: LINUX_CONTAINER
         EnvironmentVariables:
-          - Name: TEMPLATE_Path
+          - Name: TEMPLATE_PATH
             Value: !Ref TemplatePath
       ServiceRole: !Ref CodeBuildServiceRole
       EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
@@ -552,35 +602,72 @@ Resources:
       ServiceRole: !Ref CodeBuildServiceRole
       EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
 
-  ArtifactStoreCreatorLambda:
+  UuidGeneratorRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: >- 
+              logs:CreateLogGroup/CreateLogStream/PutLogEvents - requires trailing * on resource to avoid creating a circular dependency between resources
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-StackNameFormatterRole
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/*
+
+  UuidGeneratorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt UuidGeneratorRole.Arn
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "uuid-generator.zip"]]
+      Runtime:  nodejs12.x
+      Timeout: 30
+
+  UuidGenerator:
+    Type: Custom::UuidGenerator
+    Properties:
+      ServiceToken: !GetAtt UuidGeneratorLambda.Arn
+
+  SecondaryBucketCreatorLambda:
     Type: AWS::Lambda::Function
     Properties:
       Description: Lambda Custom Resource used to create a CodePipeline Artifact Store S3 bucket in a secondary region
       Handler: index.handler
-      Role: !GetAtt ArtifactStoreCreatorLambdaRole.Arn
+      Role: !GetAtt SecondaryBucketCreatorRole.Arn
       Code:
         S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "custom-resource.zip"]]
-      Runtime:  nodejs10.x
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "secondary-bucket-creator.zip"]]
+      Runtime:  nodejs12.x
       Timeout: 120
-      Environment:
-        Variables:
-          BUCKET_PREFIX: !Ref ArtifactStoreBucketPrefix
-          REGION: !Ref SecondaryRegion
 
-  ArtifactStoreCreatorCustomResource:
+  SecondaryBucketCreator:
     Type: Custom::ArtifactStoreCreatorCustomResource
     Properties:
-      ServiceToken: !GetAtt ArtifactStoreCreatorLambda.Arn
-      Resource: ArtifactStoreCreatorCustomResource
+      ServiceToken: !GetAtt SecondaryBucketCreatorLambda.Arn
+      PrimaryBucketName: !Ref PrimaryArtifactStore
+      SecondaryRegion: !Ref SecondaryRegion
 
-  UUID:
-    Type: Custom::UUID
-    Properties:
-      ServiceToken: !GetAtt ArtifactStoreCreatorLambda.Arn
-      Resource: UUID
-
-  ArtifactStoreCreatorLambdaRole:
+  SecondaryBucketCreatorRole:
     Type: AWS::IAM::Role
     Metadata:
       cfn_nag:
@@ -598,7 +685,7 @@ Resources:
             Action: sts:AssumeRole
       Path: /
       Policies:
-        - PolicyName: ArtifactStoreCreatorLambdaRole
+        - PolicyName: SecondaryBucketCreatorPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -617,8 +704,7 @@ Resources:
                   - s3:PutBucketPublicAccessBlock
                   - s3:PutBucketLogging
                 Resource: 
-                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${SecondaryRegion}
-                  - !Sub arn:aws:s3:::${ArtifactStoreBucketPrefix}-${SecondaryRegion}-logs
+                  - arn:aws:s3:::* # We don't know the name or prefix of the bucket to be created at this point
 
   ChangeSetValidatorLambda:
     Type: AWS::Lambda::Function
@@ -629,14 +715,14 @@ Resources:
       Code:
         S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
         S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "changeset-validator.zip"]] 
-      Runtime: nodejs10.x
+      Runtime: nodejs12.x
       Timeout: 180
       Environment:
         Variables:
           STACK_NAME: !Sub ${AWS::StackName}-Stack-PreProd-${AWS::Region}
           REGION: !Ref AWS::Region
           SOLUTION_ID: SO0086
-          UUID: !GetAtt UUID.UUID
+          UUID: !GetAtt UuidGenerator.Value
           VERSION: SOLUTION_VERSION
           SEND_METRICS: !FindInMap ["Solution" ,"Metrics" ,"SendAnonymousData"]
 

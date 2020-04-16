@@ -4,6 +4,7 @@
   "description": "Lambda Package to check if CloudFormation templates have changed since the last time it was checked.",
   "main": "index.js",
   "scripts": {
+    "clean": "rm -rf node_modules/ && rm -rf package/ && rm -rf build/",
     "test": "mocha **/*.spec.js"
   },
   "author": "aws-solutions-builders",

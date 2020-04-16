@@ -1,5 +1,5 @@
-// Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 const AWS = require('aws-sdk')
 
@@ -21,10 +21,6 @@ exports.handler = async (event, context) => {
             StackName: stackName
         }).promise()
 
-        await metrics.send({
-            changeSetHasChanges: changeSet.Status !== 'FAILED'
-        })
-
         if (changeSet.Status === 'FAILED') {
             await codePipeline.putJobFailureResult({
                 jobId: codePipelineJob.id,
@@ -42,6 +38,10 @@ exports.handler = async (event, context) => {
             await codePipeline.putJobSuccessResult({
                 jobId: codePipelineJob.id
             }).promise()
+
+            await metrics.send({
+                success: 'true'
+            })
             return {
                 status: "SUCCESS",
                 pipelineState: "RUNNING"
@@ -51,7 +51,7 @@ exports.handler = async (event, context) => {
    
     } catch (err) {
         await metrics.send({
-            changeSetValidationFailed: 'JobFailed'
+            sucess: 'false'
         })
         await codePipeline.putJobFailureResult({
             jobId: codePipelineJob.id,
