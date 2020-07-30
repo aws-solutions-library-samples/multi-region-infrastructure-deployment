@@ -12,15 +12,17 @@ THIRD PARTY COMPONENTS
 **********************
 This software includes third party software subject to the following copyrights:
 
-AWS SDK under the Apache License Version 2.0
+adm-zip under the Massachusetts Institute of Technology (MIT) license
+aws-lambda under the Massachusetts Institute of Technology (MIT) license
+aws-sdk under the Apache License Version 2.0
 aws-sdk-mock under the Apache License Version 2.0
 axios under the Massachusetts Institute of Technology (MIT) license
 axios-mock-adapter under the Massachusetts Institute of Technology (MIT) license
 chai under the Massachusetts Institute of Technology (MIT) license
 jest under the Massachusetts Institute of Technology (MIT) license
 mocha under the Massachusetts Institute of Technology (MIT) license
-uuid.js under the Massachusetts Institute of Technology (MIT) license
-sinon under the BSD license
 moment under the Massachusetts Institute of Technology (MIT) license
+sinon under the BSD license
 ts-jest under the Massachusetts Institute of Technology (MIT) license
 typescript under Apache License Version 2.0
+uuid under the Massachusetts Institute of Technology (MIT) license

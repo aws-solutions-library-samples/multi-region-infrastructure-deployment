@@ -1,7 +1,7 @@
 {
-  "name": "cfn-template-checker",
+  "name": "stage-artifact-creator",
   "version": "1.1.0",
-  "description": "Lambda Package to check if CloudFormation templates have changed since the last time it was checked.",
+  "description": "Lambda Package to create a stage artifact based on the previous template.",
   "main": "index.js",
   "scripts": {
     "clean": "rm -rf node_modules coverage",
@@ -9,12 +9,11 @@
   },
   "author": "aws-solutions-builders",
   "license": "Apache-2.0",
+  "dependencies": {
+    "adm-zip": "~0.4.16"
+  },
   "devDependencies": {
     "aws-sdk": "2.631.0",
     "jest": "26.1.0"
-  },
-  "dependencies": {
-    "axios": "^0.19.2",
-    "moment": "^2.27.0"
   }
 }

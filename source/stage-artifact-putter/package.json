@@ -1,7 +1,7 @@
 {
-  "name": "cfn-template-checker",
+  "name": "stage-artifact-putter",
   "version": "1.1.0",
-  "description": "Lambda Package to check if CloudFormation templates have changed since the last time it was checked.",
+  "description": "Lambda Package to put stage artifact into SSM paramter.",
   "main": "index.js",
   "scripts": {
     "clean": "rm -rf node_modules coverage",
@@ -12,9 +12,5 @@
   "devDependencies": {
     "aws-sdk": "2.631.0",
     "jest": "26.1.0"
-  },
-  "dependencies": {
-    "axios": "^0.19.2",
-    "moment": "^2.27.0"
   }
 }

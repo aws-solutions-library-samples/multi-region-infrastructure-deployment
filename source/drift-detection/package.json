@@ -1,7 +1,7 @@
 {
-  "name": "cfn-template-checker",
+  "name": "drift-detection",
   "version": "1.1.0",
-  "description": "Lambda Package to check if CloudFormation templates have changed since the last time it was checked.",
+  "description": "Lambda Package to detect drift on the primary and secondary stacks.",
   "main": "index.js",
   "scripts": {
     "clean": "rm -rf node_modules coverage",
@@ -12,9 +12,5 @@
   "devDependencies": {
     "aws-sdk": "2.631.0",
     "jest": "26.1.0"
-  },
-  "dependencies": {
-    "axios": "^0.19.2",
-    "moment": "^2.27.0"
   }
 }

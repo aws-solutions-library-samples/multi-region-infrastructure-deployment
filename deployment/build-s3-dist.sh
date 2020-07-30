@@ -39,29 +39,55 @@ SUB1="s/CODE_BUCKET/$1/g"
 SUB2="s/SOLUTION_NAME/$2/g"
 SUB3="s/SOLUTION_VERSION/$3/g"
 
-for FULLNAME in ./*.template
+for FULLNAME in ./*.yaml
 do
-  TEMPLATE=`basename $FULLNAME`
+  TEMPLATE=`basename $FULLNAME .yaml`
   echo "Preparing $TEMPLATE"
-  sed -e $SUB1 -e $SUB2 -e $SUB3 $template_dir/$TEMPLATE > $template_dist_dir/$TEMPLATE
+  sed -e $SUB1 -e $SUB2 -e $SUB3 $template_dir/$TEMPLATE.yaml > $template_dist_dir/$TEMPLATE.template
 done
 
 cd $source_dir/secondary-bucket-creator
-npm install
-rm -rf package && mkdir package
-rsync -r --exclude=*.spec.ts source/ ./package/ && cp package.json tsconfig.json ./package
-cd package && npm install --production && tsc --project tsconfig.json --outDir .
+npm run clean
+npm ci
+mkdir package
+rsync -r --exclude=*.spec.ts source/ ./package/ && cp package.json package-lock.json tsconfig.json ./package
+cd package && npm ci --production && tsc --project tsconfig.json --outDir .
 zip -q -r9 $build_dist_dir/secondary-bucket-creator *
 
 cd $source_dir/uuid-generator
-npm install
-rm -rf package && mkdir package
-rsync -r --exclude=*.spec.ts source/ ./package/ && cp package.json tsconfig.json ./package
-cd package && npm install --production && tsc --project tsconfig.json --outDir .
+npm run clean
+npm ci
+mkdir package
+rsync -r --exclude=*.spec.ts source/ ./package/ && cp package.json package-lock.json tsconfig.json ./package
+cd package && npm ci --production && tsc --project tsconfig.json --outDir .
 zip -q -r9 $build_dist_dir/uuid-generator *
 
 cd $source_dir/changeset-validator
-rm -rf node_modules/
-npm install --production
-rm package-lock.json
+npm run clean
+npm ci --production
 zip -q -r9 $build_dist_dir/changeset-validator.zip *
+
+cd $source_dir/stage-artifact-creator
+npm run clean
+npm ci --production
+zip -q -r9 $build_dist_dir/stage-artifact-creator *
+
+cd $source_dir/stage-artifact-putter
+npm run clean
+npm ci --production
+zip -q -r9 $build_dist_dir/stage-artifact-putter *
+
+cd $source_dir/drift-detection
+npm run clean
+npm ci --production
+zip -q -r9 $build_dist_dir/drift-detection *
+
+cd $source_dir/rollback-change
+npm run clean
+npm ci --production
+zip -q -r9 $build_dist_dir/rollback-change *
+
+cd $source_dir/custom-resource
+npm run clean
+npm ci --production
+zip -q -r9 $build_dist_dir/custom-resource *

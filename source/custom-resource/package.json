@@ -1,0 +1,19 @@
+{
+  "name": "custom-resource",
+  "version": "1.1.0",
+  "description": "Custom resource Lambda",
+  "main": "index.js",
+  "scripts": {
+    "clean": "rm -rf node_modules coverage",
+    "test": "CI=true jest *.spec.js --coverage --silent"
+  },
+  "author": "aws-solutions-builders",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "axios-mock-adapter": "^1.18.2",
+    "jest": "^26.1.0"
+  },
+  "dependencies": {
+    "axios": "^0.19.2"
+  }
+}
