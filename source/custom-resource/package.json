@@ -11,9 +11,9 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "axios-mock-adapter": "^1.18.2",
-    "jest": "^26.1.0"
+    "jest": "^26.6.3"
   },
   "dependencies": {
-    "axios": "^0.19.2"
+    "axios": "^0.21.1"
   }
 }
