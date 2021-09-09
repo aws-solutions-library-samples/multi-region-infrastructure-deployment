@@ -88,6 +88,9 @@ aws s3 sync ./global-s3-assets/ s3://$DIST_OUTPUT_BUCKET-$REGION/$SOLUTION_NAME/
   |-uuid-generator/                              [ Solution UUID generator ]
 ```
 
+## Collection of operational metrics
+This solution collects anonymous operational metrics to help AWS improve the quality and features of the solution. For more information, including how to disable this capability, please see the [implementation guide](https://docs.aws.amazon.com/solutions/latest/multi-region-infrastructure-deployment/appendix-c.html).
+
 ## License
 Multi-Region Infrastructure Deployment solution is distributed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 
