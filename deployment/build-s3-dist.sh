@@ -48,46 +48,44 @@ done
 
 cd $source_dir/secondary-bucket-creator
 npm run clean
-npm ci
-mkdir package
-rsync -r --exclude=*.spec.ts source/ ./package/ && cp package.json package-lock.json tsconfig.json ./package
-cd package && npm ci --production && tsc --project tsconfig.json --outDir .
-zip -q -r9 $build_dist_dir/secondary-bucket-creator *
+npm i && npm run build
+npm prune --production
+rsync -avrq ./node_modules ./package
+cd package && zip -q -r9 $build_dist_dir/secondary-bucket-creator * -x '*.spec.*'
 
 cd $source_dir/uuid-generator
 npm run clean
-npm ci
-mkdir package
-rsync -r --exclude=*.spec.ts source/ ./package/ && cp package.json package-lock.json tsconfig.json ./package
-cd package && npm ci --production && tsc --project tsconfig.json --outDir .
-zip -q -r9 $build_dist_dir/uuid-generator *
+npm i && npm run build
+npm prune --production
+rsync -avrq ./node_modules ./package
+zip -q -r9 $build_dist_dir/uuid-generator * -x '*.spec.*'
 
 cd $source_dir/changeset-validator
 npm run clean
-npm ci --production
+npm i --production
 zip -q -r9 $build_dist_dir/changeset-validator.zip *
 
 cd $source_dir/stage-artifact-creator
 npm run clean
-npm ci --production
+npm i --production
 zip -q -r9 $build_dist_dir/stage-artifact-creator *
 
 cd $source_dir/stage-artifact-putter
 npm run clean
-npm ci --production
+npm i --production
 zip -q -r9 $build_dist_dir/stage-artifact-putter *
 
 cd $source_dir/drift-detection
 npm run clean
-npm ci --production
+npm i --production
 zip -q -r9 $build_dist_dir/drift-detection *
 
 cd $source_dir/rollback-change
 npm run clean
-npm ci --production
+npm i --production
 zip -q -r9 $build_dist_dir/rollback-change *
 
 cd $source_dir/custom-resource
 npm run clean
-npm ci --production
+npm i --production
 zip -q -r9 $build_dist_dir/custom-resource *

@@ -29,7 +29,7 @@ do
     cd $source_dir/$lambda_package
     rm -rf coverage/
     npm run clean
-    npm ci --slient
+    npm i --slient
     npm test
 
     # Check the result of the npm test and exit if a failed test is identified
